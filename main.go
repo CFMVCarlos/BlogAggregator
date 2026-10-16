@@ -1,15 +1,23 @@
 package main
 
 import (
+	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log"
 	"os"
+	"time"
+
+	"github.com/google/uuid"
+	_ "github.com/lib/pq"
 
 	"BlogAggregator/internal/config"
+	"BlogAggregator/internal/database"
 )
 
 type state struct {
+	db  *database.Queries
 	cfg *config.Config
 }
 
@@ -40,11 +48,41 @@ func handlerLogin(s *state, cmd command) error {
 	}
 
 	username := cmd.args[0]
+	_, err := s.db.GetUser(context.Background(), username)
+	if err != nil {
+		return fmt.Errorf("user does not exist: %w", err)
+	}
+
 	if err := s.cfg.SetUser(username); err != nil {
 		return fmt.Errorf("failed to set user: %w", err)
 	}
 
 	fmt.Printf("user has been set to %s\n", username)
+	return nil
+}
+
+func handlerRegister(s *state, cmd command) error {
+	if len(cmd.args) == 0 {
+		return errors.New("a name is required")
+	}
+
+	name := cmd.args[0]
+	now := time.Now().UTC()
+	user, err := s.db.CreateUser(context.Background(), database.CreateUserParams{
+		ID:        uuid.New(),
+		CreatedAt: now,
+		UpdatedAt: now,
+		Name:      name,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create user: %w", err)
+	}
+
+	if err := s.cfg.SetUser(user.Name); err != nil {
+		return fmt.Errorf("failed to set user: %w", err)
+	}
+
+	fmt.Printf("user was created: %+v\n", user)
 	return nil
 }
 
@@ -54,7 +92,16 @@ func main() {
 		log.Fatalf("error reading config: %v", err)
 	}
 
+	db, err := sql.Open("postgres", cfg.DBURL)
+	if err != nil {
+		log.Fatalf("error connecting to database: %v", err)
+	}
+	defer db.Close()
+
+	dbQueries := database.New(db)
+
 	appState := &state{
+		db:  dbQueries,
 		cfg: &cfg,
 	}
 
@@ -62,6 +109,7 @@ func main() {
 		handlers: make(map[string]func(*state, command) error),
 	}
 	cmds.register("login", handlerLogin)
+	cmds.register("register", handlerRegister)
 
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "error: not enough arguments provided")
