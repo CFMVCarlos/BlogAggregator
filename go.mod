@@ -1,3 +1,3 @@
-module github.com/CFMVCarlos/BlogAggregator
+module BlogAggregator
 
 go 1.27.0
