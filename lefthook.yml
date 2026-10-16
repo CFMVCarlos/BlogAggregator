@@ -1,0 +1,25 @@
+# Lefthook Git Hooks Configuration
+# https://github.com/evilmartians/lefthook
+
+# Validate code quality, tests, and linters before committing
+pre-commit:
+  parallel: true
+  commands:
+    go-vet:
+      glob: "*.go"
+      run: go vet ./...
+
+    go-test:
+      glob: "*.go"
+      run: go test ./...
+
+    frontend-lint:
+      glob: "frontend/**/*.{ts,tsx,js,jsx,json,css}"
+      run: npm --prefix frontend run lint
+
+# Validate that the commit message follows Conventional Commits specification
+commit-msg:
+  commands:
+    conventional-commit:
+      run: |
+        head -n 1 "{1}" | grep -qE '^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-zA-Z0-9_\-\./]+\))?(!)?: .+'
