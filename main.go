@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -111,6 +113,37 @@ func handlerUsers(s *state, cmd command) error {
 	return nil
 }
 
+func parsePubDate(pubDate string) sql.NullTime {
+	if pubDate == "" {
+		return sql.NullTime{Valid: false}
+	}
+
+	layouts := []string{
+		time.RFC1123Z,
+		time.RFC1123,
+		time.RFC822Z,
+		time.RFC822,
+		time.RFC3339,
+		time.RFC3339Nano,
+		"Mon, 02 Jan 2006 15:04:05 -0700",
+		"Mon, 2 Jan 2006 15:04:05 -0700",
+		"Mon, 02 Jan 2006 15:04:05 MST",
+		"Mon, 2 Jan 2006 15:04:05 MST",
+		"2006-01-02T15:04:05Z07:00",
+		"2006-01-02 15:04:05",
+		"2006-01-02",
+	}
+
+	for _, layout := range layouts {
+		if t, err := time.Parse(layout, pubDate); err == nil {
+			return sql.NullTime{Time: t, Valid: true}
+		}
+	}
+
+	log.Printf("couldn't parse date %q\n", pubDate)
+	return sql.NullTime{Valid: false}
+}
+
 func scrapeFeeds(s *state) {
 	feed, err := s.db.GetNextFeedToFetch(context.Background())
 	if err != nil {
@@ -130,9 +163,34 @@ func scrapeFeeds(s *state) {
 		return
 	}
 
-	fmt.Printf("Fetching feed: %s\n", feed.Name)
 	for _, item := range feedData.Channel.Item {
-		fmt.Printf("* %s\n", item.Title)
+		publishedAt := parsePubDate(item.PubDate)
+		var description sql.NullString
+		if item.Description != "" {
+			description = sql.NullString{
+				String: item.Description,
+				Valid:  true,
+			}
+		}
+
+		now := time.Now().UTC()
+		_, err := s.db.CreatePost(context.Background(), database.CreatePostParams{
+			ID:          uuid.New(),
+			CreatedAt:   now,
+			UpdatedAt:   now,
+			Title:       item.Title,
+			Url:         item.Link,
+			Description: description,
+			PublishedAt: publishedAt,
+			FeedID:      feed.ID,
+		})
+		if err != nil {
+			if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "unique constraint") {
+				continue
+			}
+			log.Printf("Couldn't create post %q: %v\n", item.Title, err)
+			continue
+		}
 	}
 	log.Printf("Feed %s collected, %v posts found\n", feed.Name, len(feedData.Channel.Item))
 }
@@ -281,6 +339,38 @@ func handlerUnfollow(s *state, cmd command, user database.User) error {
 	return nil
 }
 
+func handlerBrowse(s *state, cmd command, user database.User) error {
+	limit := 2
+	if len(cmd.args) > 0 {
+		l, err := strconv.Atoi(cmd.args[0])
+		if err != nil || l <= 0 {
+			return fmt.Errorf("invalid limit: %s", cmd.args[0])
+		}
+		limit = l
+	}
+
+	posts, err := s.db.GetPostsForUser(context.Background(), database.GetPostsForUserParams{
+		UserID: user.ID,
+		Limit:  int32(limit),
+	})
+	if err != nil {
+		return fmt.Errorf("could not get posts for user: %w", err)
+	}
+
+	for _, post := range posts {
+		if post.PublishedAt.Valid {
+			fmt.Printf("%s\n", post.PublishedAt.Time.Format("2006-01-02 15:04:05"))
+		}
+		fmt.Printf("Title:       %s\n", post.Title)
+		fmt.Printf("Link:        %s\n", post.Url)
+		if post.Description.Valid && post.Description.String != "" {
+			fmt.Printf("Description: %s\n", post.Description.String)
+		}
+		fmt.Println("=====================================")
+	}
+	return nil
+}
+
 func main() {
 	cfg, err := config.Read()
 	if err != nil {
@@ -313,6 +403,7 @@ func main() {
 	cmds.register("follow", middlewareLoggedIn(handlerFollow))
 	cmds.register("following", middlewareLoggedIn(handlerFollowing))
 	cmds.register("unfollow", middlewareLoggedIn(handlerUnfollow))
+	cmds.register("browse", middlewareLoggedIn(handlerBrowse))
 
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "error: not enough arguments provided")
