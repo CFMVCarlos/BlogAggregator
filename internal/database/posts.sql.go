@@ -236,3 +236,53 @@ func (q *Queries) GetPostsForUserPaged(ctx context.Context, arg GetPostsForUserP
 	}
 	return items, nil
 }
+
+const searchPostsForUser = `-- name: SearchPostsForUser :many
+SELECT posts.id, posts.created_at, posts.updated_at, posts.title, posts.url, posts.description, posts.published_at, posts.feed_id FROM posts
+JOIN feed_follows ON posts.feed_id = feed_follows.feed_id
+WHERE feed_follows.user_id = $1
+  AND (
+    posts.title ILIKE '%' || $3::text || '%'
+    OR posts.description ILIKE '%' || $3::text || '%'
+  )
+ORDER BY posts.published_at DESC NULLS LAST, posts.created_at DESC
+LIMIT $2
+`
+
+type SearchPostsForUserParams struct {
+	UserID uuid.UUID
+	Limit  int32
+	Query  string
+}
+
+func (q *Queries) SearchPostsForUser(ctx context.Context, arg SearchPostsForUserParams) ([]Post, error) {
+	rows, err := q.db.QueryContext(ctx, searchPostsForUser, arg.UserID, arg.Limit, arg.Query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Post
+	for rows.Next() {
+		var i Post
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Title,
+			&i.Url,
+			&i.Description,
+			&i.PublishedAt,
+			&i.FeedID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

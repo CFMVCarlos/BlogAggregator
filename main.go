@@ -435,6 +435,49 @@ func handlerBrowse(s *state, cmd command, user database.User) error {
 	return nil
 }
 
+func handlerSearch(s *state, cmd command, user database.User) error {
+	if len(cmd.args) < 1 {
+		return errors.New("a search query is required")
+	}
+
+	query := cmd.args[0]
+	limit := 10
+	if len(cmd.args) > 1 {
+		l, err := strconv.Atoi(cmd.args[1])
+		if err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	posts, err := s.db.SearchPostsForUser(context.Background(), database.SearchPostsForUserParams{
+		UserID: user.ID,
+		Query:  query,
+		Limit:  int32(limit),
+	})
+	if err != nil {
+		return fmt.Errorf("could not search posts: %w", err)
+	}
+
+	if len(posts) == 0 {
+		fmt.Printf("No posts found matching %q.\n", query)
+		return nil
+	}
+
+	fmt.Printf("--- Found %d posts matching %q ---\n\n", len(posts), query)
+	for _, post := range posts {
+		if post.PublishedAt.Valid {
+			fmt.Printf("%s\n", post.PublishedAt.Time.Format("2006-01-02 15:04:05"))
+		}
+		fmt.Printf("Title:       %s\n", post.Title)
+		fmt.Printf("Link:        %s\n", post.Url)
+		if post.Description.Valid && post.Description.String != "" {
+			fmt.Printf("Description: %s\n", post.Description.String)
+		}
+		fmt.Println("=====================================")
+	}
+	return nil
+}
+
 func main() {
 	cfg, err := config.Read()
 	if err != nil {
@@ -468,6 +511,7 @@ func main() {
 	cmds.register("following", middlewareLoggedIn(handlerFollowing))
 	cmds.register("unfollow", middlewareLoggedIn(handlerUnfollow))
 	cmds.register("browse", middlewareLoggedIn(handlerBrowse))
+	cmds.register("search", middlewareLoggedIn(handlerSearch))
 
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "error: not enough arguments provided")
