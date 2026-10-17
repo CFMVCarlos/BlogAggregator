@@ -111,14 +111,48 @@ func handlerUsers(s *state, cmd command) error {
 	return nil
 }
 
-func handlerAgg(s *state, cmd command) error {
-	feed, err := fetchFeed(context.Background(), "https://www.wagslane.dev/index.xml")
+func scrapeFeeds(s *state) {
+	feed, err := s.db.GetNextFeedToFetch(context.Background())
 	if err != nil {
-		return fmt.Errorf("failed to fetch feed: %w", err)
+		log.Printf("Couldn't get next feed to fetch: %v\n", err)
+		return
 	}
 
-	fmt.Printf("%+v\n", feed)
-	return nil
+	err = s.db.MarkFeedFetched(context.Background(), feed.ID)
+	if err != nil {
+		log.Printf("Couldn't mark feed as fetched: %v\n", err)
+		return
+	}
+
+	feedData, err := fetchFeed(context.Background(), feed.Url)
+	if err != nil {
+		log.Printf("Couldn't fetch feed %s: %v\n", feed.Name, err)
+		return
+	}
+
+	fmt.Printf("Fetching feed: %s\n", feed.Name)
+	for _, item := range feedData.Channel.Item {
+		fmt.Printf("* %s\n", item.Title)
+	}
+	log.Printf("Feed %s collected, %v posts found\n", feed.Name, len(feedData.Channel.Item))
+}
+
+func handlerAgg(s *state, cmd command) error {
+	if len(cmd.args) < 1 {
+		return errors.New("a time between requests duration is required (e.g. 1s, 1m, 1h)")
+	}
+
+	timeBetweenRequests, err := time.ParseDuration(cmd.args[0])
+	if err != nil {
+		return fmt.Errorf("invalid duration: %w", err)
+	}
+
+	fmt.Printf("Collecting feeds every %s\n", timeBetweenRequests)
+
+	ticker := time.NewTicker(timeBetweenRequests)
+	for ; ; <-ticker.C {
+		scrapeFeeds(s)
+	}
 }
 
 func middlewareLoggedIn(handler func(s *state, cmd command, user database.User) error) func(*state, command) error {
