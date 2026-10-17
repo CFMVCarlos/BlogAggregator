@@ -170,6 +170,33 @@ goose -dir sql/schema postgres "postgres://postgres:postgres@localhost:5432/gato
   - `b`: Toggle bookmark on selected article
   - `q` / `Esc`: Quit reader
 
+### HTTP REST API Server
+- **Run the API server**:
+  Starts an embedded JSON HTTP REST API server with authentication:
+  ```bash
+  gator serve
+  gator serve :8080
+  ```
+  **Endpoints**:
+  - `GET  /healthz`: Health check endpoint.
+  - `GET  /api/feeds`: List all feeds.
+  - `GET  /api/posts`: Browse followed feed posts (`Authorization: Bearer <username>`).
+  - `GET  /api/search?q=...`: Search followed feed posts (`Authorization: Bearer <username>`).
+  - `GET  /api/bookmarks`: List bookmarks (`Authorization: Bearer <username>`).
+  - `POST /api/bookmarks`: Bookmark a post by URL (`{"url": "..."}`).
+  - `GET  /api/following`: List followed feeds (`Authorization: Bearer <username>`).
+  - `POST /api/following`: Follow a feed by URL (`{"url": "..."}`).
+
+### Background Service Manager (Daemon & Auto-Restart)
+- **Manage the background aggregator service**:
+  Keeps `gator agg` running in the background and automatically restarts it with exponential backoff if it crashes:
+  ```bash
+  gator service start 1m 3    # Start background aggregator (duration & workers)
+  gator service status        # Check if running and inspect recent logs
+  gator service logs -f       # Stream/follow service logs
+  gator service stop          # Gracefully terminate the background daemon
+  ```
+
 ---
 
 ## Development
