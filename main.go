@@ -606,6 +606,7 @@ func main() {
 	cmds.register("bookmark", middlewareLoggedIn(handlerBookmark))
 	cmds.register("unbookmark", middlewareLoggedIn(handlerUnbookmark))
 	cmds.register("bookmarks", middlewareLoggedIn(handlerBookmarks))
+	cmds.register("tui", middlewareLoggedIn(handlerTUI))
 
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "error: not enough arguments provided")
