@@ -27,3 +27,21 @@ JOIN feed_follows ON posts.feed_id = feed_follows.feed_id
 WHERE feed_follows.user_id = $1
 ORDER BY posts.published_at DESC NULLS LAST, posts.created_at DESC
 LIMIT $2;
+
+-- name: GetPostsForUserPaged :many
+SELECT posts.* FROM posts
+JOIN feed_follows ON posts.feed_id = feed_follows.feed_id
+WHERE feed_follows.user_id = $1
+ORDER BY posts.published_at DESC NULLS LAST, posts.created_at DESC
+LIMIT $2 OFFSET $3;
+
+-- name: GetPostsForUserByFeed :many
+SELECT posts.* FROM posts
+JOIN feed_follows ON posts.feed_id = feed_follows.feed_id
+WHERE feed_follows.user_id = $1 AND posts.feed_id = $2
+ORDER BY posts.published_at DESC NULLS LAST, posts.created_at DESC
+LIMIT $3 OFFSET $4;
+
+-- name: GetPostByURL :one
+SELECT * FROM posts
+WHERE url = $1;

@@ -374,12 +374,51 @@ func handlerBrowse(s *state, cmd command, user database.User) error {
 		limit = l
 	}
 
-	posts, err := s.db.GetPostsForUser(context.Background(), database.GetPostsForUserParams{
-		UserID: user.ID,
-		Limit:  int32(limit),
-	})
-	if err != nil {
-		return fmt.Errorf("could not get posts for user: %w", err)
+	page := 1
+	if len(cmd.args) > 1 {
+		p, err := strconv.Atoi(cmd.args[1])
+		if err != nil || p <= 0 {
+			return fmt.Errorf("invalid page: %s", cmd.args[1])
+		}
+		page = p
+	}
+
+	offset := (page - 1) * limit
+
+	var posts []database.Post
+	var err error
+
+	if len(cmd.args) > 2 {
+		feedURL := cmd.args[2]
+		feed, err := s.db.GetFeedByURL(context.Background(), feedURL)
+		if err != nil {
+			return fmt.Errorf("could not find feed with URL %s: %w", feedURL, err)
+		}
+		posts, err = s.db.GetPostsForUserByFeed(context.Background(), database.GetPostsForUserByFeedParams{
+			UserID: user.ID,
+			FeedID: feed.ID,
+			Limit:  int32(limit),
+			Offset: int32(offset),
+		})
+		if err != nil {
+			return fmt.Errorf("could not get posts for feed: %w", err)
+		}
+		fmt.Printf("--- Showing posts for feed %q (Page %d) ---\n\n", feed.Name, page)
+	} else {
+		posts, err = s.db.GetPostsForUserPaged(context.Background(), database.GetPostsForUserPagedParams{
+			UserID: user.ID,
+			Limit:  int32(limit),
+			Offset: int32(offset),
+		})
+		if err != nil {
+			return fmt.Errorf("could not get posts for user: %w", err)
+		}
+		fmt.Printf("--- Showing posts (Page %d) ---\n\n", page)
+	}
+
+	if len(posts) == 0 {
+		fmt.Println("No posts found.")
+		return nil
 	}
 
 	for _, post := range posts {
