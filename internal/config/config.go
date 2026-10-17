@@ -39,6 +39,15 @@ func (cfg *Config) SetUser(userName string) error {
 
 func getConfigFilePath() (string, error) {
 	home, err := os.UserHomeDir()
+	if err == nil {
+		homePath := filepath.Join(home, configFileName)
+		if _, statErr := os.Stat(homePath); statErr == nil {
+			return homePath, nil
+		}
+	}
+	if _, statErr := os.Stat(configFileName); statErr == nil {
+		return configFileName, nil
+	}
 	if err != nil {
 		return "", err
 	}
