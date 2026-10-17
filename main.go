@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -144,16 +145,10 @@ func parsePubDate(pubDate string) sql.NullTime {
 	return sql.NullTime{Valid: false}
 }
 
-func scrapeFeeds(s *state) {
-	feed, err := s.db.GetNextFeedToFetch(context.Background())
+func scrapeFeed(s *state, feed database.Feed) {
+	err := s.db.MarkFeedFetched(context.Background(), feed.ID)
 	if err != nil {
-		log.Printf("Couldn't get next feed to fetch: %v\n", err)
-		return
-	}
-
-	err = s.db.MarkFeedFetched(context.Background(), feed.ID)
-	if err != nil {
-		log.Printf("Couldn't mark feed as fetched: %v\n", err)
+		log.Printf("Couldn't mark feed as fetched (%s): %v\n", feed.Name, err)
 		return
 	}
 
@@ -195,6 +190,28 @@ func scrapeFeeds(s *state) {
 	log.Printf("Feed %s collected, %v posts found\n", feed.Name, len(feedData.Channel.Item))
 }
 
+func scrapeFeedsConcurrently(s *state, concurrency int) {
+	feeds, err := s.db.GetNextFeedsToFetch(context.Background(), int32(concurrency))
+	if err != nil {
+		log.Printf("Couldn't get next feeds to fetch: %v\n", err)
+		return
+	}
+
+	if len(feeds) == 0 {
+		return
+	}
+
+	var wg sync.WaitGroup
+	for _, feed := range feeds {
+		wg.Add(1)
+		go func(f database.Feed) {
+			defer wg.Done()
+			scrapeFeed(s, f)
+		}(feed)
+	}
+	wg.Wait()
+}
+
 func handlerAgg(s *state, cmd command) error {
 	if len(cmd.args) < 1 {
 		return errors.New("a time between requests duration is required (e.g. 1s, 1m, 1h)")
@@ -205,11 +222,19 @@ func handlerAgg(s *state, cmd command) error {
 		return fmt.Errorf("invalid duration: %w", err)
 	}
 
-	fmt.Printf("Collecting feeds every %s\n", timeBetweenRequests)
+	concurrency := 3
+	if len(cmd.args) > 1 {
+		c, err := strconv.Atoi(cmd.args[1])
+		if err == nil && c > 0 {
+			concurrency = c
+		}
+	}
+
+	fmt.Printf("Collecting feeds every %s with %d concurrent workers\n", timeBetweenRequests, concurrency)
 
 	ticker := time.NewTicker(timeBetweenRequests)
 	for ; ; <-ticker.C {
-		scrapeFeeds(s)
+		scrapeFeedsConcurrently(s, concurrency)
 	}
 }
 
