@@ -478,6 +478,97 @@ func handlerSearch(s *state, cmd command, user database.User) error {
 	return nil
 }
 
+func handlerBookmark(s *state, cmd command, user database.User) error {
+	if len(cmd.args) < 1 {
+		return errors.New("a post URL is required")
+	}
+
+	postURL := cmd.args[0]
+	post, err := s.db.GetPostByURL(context.Background(), postURL)
+	if err != nil {
+		return fmt.Errorf("could not find post with URL %s: %w", postURL, err)
+	}
+
+	now := time.Now().UTC()
+	bm, err := s.db.CreateBookmark(context.Background(), database.CreateBookmarkParams{
+		ID:        uuid.New(),
+		CreatedAt: now,
+		UpdatedAt: now,
+		UserID:    user.ID,
+		PostID:    post.ID,
+	})
+	if err != nil {
+		if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "unique constraint") {
+			fmt.Printf("Post %q is already bookmarked.\n", post.Title)
+			return nil
+		}
+		return fmt.Errorf("could not bookmark post: %w", err)
+	}
+
+	fmt.Printf("Bookmarked post: %q\n", bm.PostTitle)
+	return nil
+}
+
+func handlerUnbookmark(s *state, cmd command, user database.User) error {
+	if len(cmd.args) < 1 {
+		return errors.New("a post URL is required")
+	}
+
+	postURL := cmd.args[0]
+	post, err := s.db.GetPostByURL(context.Background(), postURL)
+	if err != nil {
+		return fmt.Errorf("could not find post with URL %s: %w", postURL, err)
+	}
+
+	err = s.db.DeleteBookmark(context.Background(), database.DeleteBookmarkParams{
+		UserID: user.ID,
+		PostID: post.ID,
+	})
+	if err != nil {
+		return fmt.Errorf("could not unbookmark post: %w", err)
+	}
+
+	fmt.Printf("Removed bookmark for post: %q\n", post.Title)
+	return nil
+}
+
+func handlerBookmarks(s *state, cmd command, user database.User) error {
+	limit := 10
+	if len(cmd.args) > 0 {
+		l, err := strconv.Atoi(cmd.args[0])
+		if err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	bookmarks, err := s.db.GetBookmarksForUser(context.Background(), database.GetBookmarksForUserParams{
+		UserID: user.ID,
+		Limit:  int32(limit),
+	})
+	if err != nil {
+		return fmt.Errorf("could not get bookmarks: %w", err)
+	}
+
+	if len(bookmarks) == 0 {
+		fmt.Println("No bookmarks saved yet.")
+		return nil
+	}
+
+	fmt.Printf("--- %d Bookmarked Posts ---\n\n", len(bookmarks))
+	for _, bm := range bookmarks {
+		if bm.PublishedAt.Valid {
+			fmt.Printf("%s\n", bm.PublishedAt.Time.Format("2006-01-02 15:04:05"))
+		}
+		fmt.Printf("Title:       %s\n", bm.PostTitle)
+		fmt.Printf("Link:        %s\n", bm.PostUrl)
+		if bm.Description.Valid && bm.Description.String != "" {
+			fmt.Printf("Description: %s\n", bm.Description.String)
+		}
+		fmt.Println("=====================================")
+	}
+	return nil
+}
+
 func main() {
 	cfg, err := config.Read()
 	if err != nil {
@@ -512,6 +603,9 @@ func main() {
 	cmds.register("unfollow", middlewareLoggedIn(handlerUnfollow))
 	cmds.register("browse", middlewareLoggedIn(handlerBrowse))
 	cmds.register("search", middlewareLoggedIn(handlerSearch))
+	cmds.register("bookmark", middlewareLoggedIn(handlerBookmark))
+	cmds.register("unbookmark", middlewareLoggedIn(handlerUnbookmark))
+	cmds.register("bookmarks", middlewareLoggedIn(handlerBookmarks))
 
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "error: not enough arguments provided")
