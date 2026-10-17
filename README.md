@@ -68,7 +68,7 @@ gator
 Adjust the username, password, host, and port as needed for your local PostgreSQL setup.
 
 ### 2. Database Migrations
-Run the Goose migrations located in `sql/schema` to initialize the database tables (`users`, `feeds`, `feed_follows`, and `posts`):
+Run the Goose migrations located in `sql/schema` to initialize the database tables (`users`, `feeds`, `feed_follows`, `posts`, and `bookmarks`):
 
 ```bash
 goose -dir sql/schema postgres "postgres://postgres:postgres@localhost:5432/gator?sslmode=disable" up
@@ -91,7 +91,7 @@ goose -dir sql/schema postgres "postgres://postgres:postgres@localhost:5432/gato
   ```bash
   gator users
   ```
-- **Reset database** (deletes all users and cascades to all feeds, follows, and posts):
+- **Reset database** (deletes all users and cascades to all feeds, follows, posts, and bookmarks):
   ```bash
   gator reset
   ```
@@ -120,18 +120,55 @@ goose -dir sql/schema postgres "postgres://postgres:postgres@localhost:5432/gato
 
 ### Aggregator & Browsing Posts
 - **Run the feed aggregator**:
-  Runs a continuous background loop scraping feeds in order of least recently fetched. Takes a duration string (`time_between_reqs` such as `30s`, `1m`, `5m`):
+  Runs a continuous background loop scraping feeds concurrently in order of least recently fetched. Accepts a duration string and an optional worker count (defaults to 3):
   ```bash
   gator agg 1m
+  gator agg 30s 5
   ```
   *(Press `Ctrl+C` to stop the aggregator loop).*
 
-- **Browse latest posts from feeds you follow**:
-  View posts in the terminal. Accepts an optional limit (defaults to 2):
+- **Browse latest posts with pagination & filtering**:
+  View posts in the terminal. Accepts an optional limit (default 2), page offset (default 1), and optional feed URL filter:
   ```bash
   gator browse
-  gator browse 10
+  gator browse 5 1
+  gator browse 5 2 "https://hnrss.org/newest"
   ```
+
+- **Search posts by keyword**:
+  Search through followed feed articles by title or description:
+  ```bash
+  gator search "Go" 10
+  ```
+
+### Bookmarks & Favorites
+- **Bookmark a post by URL**:
+  ```bash
+  gator bookmark "https://example.com/post-url"
+  ```
+- **Unbookmark a post by URL**:
+  ```bash
+  gator unbookmark "https://example.com/post-url"
+  ```
+- **List bookmarked posts**:
+  ```bash
+  gator bookmarks
+  gator bookmarks 20
+  ```
+
+### Interactive Terminal User Interface (TUI)
+- **Launch interactive terminal reader**:
+  Interactive TUI with scrollable posts, live preview pane, and keybindings:
+  ```bash
+  gator tui
+  gator tui 100
+  ```
+  **Keybindings**:
+  - `↑` / `k`: Move up
+  - `↓` / `j`: Move down
+  - `Enter` / `o`: Open selected article in default web browser
+  - `b`: Toggle bookmark on selected article
+  - `q` / `Esc`: Quit reader
 
 ---
 
