@@ -34,10 +34,10 @@ createdb gator
 You can install the compiled `gator` CLI directly into your `$GOPATH/bin` using Go:
 
 ### From Source
-Clone the repository and run:
+Clone the repository and install the binary:
 ```bash
-git clone https://github.com/<your-username>/<your-repo-name>.git
-cd <your-repo-name>
+git clone https://github.com/CFMVCarlos/BlogAggregator.git
+cd BlogAggregator
 go install .
 ```
 
