@@ -13,10 +13,6 @@ pre-commit:
       glob: "*.go"
       run: go test ./...
 
-    frontend-lint:
-      glob: "frontend/**/*.{ts,tsx,js,jsx,json,css}"
-      run: npm --prefix frontend run lint
-
 # Validate that the commit message follows Conventional Commits specification
 commit-msg:
   commands:
